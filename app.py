@@ -2808,4 +2808,5 @@ def index():
 
 if __name__ == "__main__":
     logging.info("Starting Flask server")
-    app.run(host="0.0.0.0", port=7860)
+    port = int(os.environ.get("PORT", 7860))  # fallback for local testing
+    app.run(host="0.0.0.0", port=port)
