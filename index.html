@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Assistant Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+        }
+        h1 {
+            text-align: center;
+            color: #ffffff;
+            font-size: 26px;
+            margin: 0;
+        }
+        .subtitle {
+            text-align: center;
+            color: #aaaaaa;
+            font-size: 14px;
+        }
+        #chat-container {
+            border: 1px solid #444;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            margin-top: 10px;
+        }
+        #chat-container p {
+            margin: 5px 0;
+        }
+        .user {
+            color: #4da8ff;
+        }
+        .bot {
+            color: #4caf50;
+        }
+        #input-box {
+            margin-top: 10px;
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            box-sizing: border-box;
+        }
+        #input-box::placeholder {
+            color: #888;
+        }
+        details {
+            margin: 10px 0 0 0;
+            background-color: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+        }
+        summary {
+            cursor: pointer;
+            font-weight: bold;
+            color: #4da8ff;
+            user-select: none;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        summary:hover {
+            background-color: #333;
+        }
+        .controls {
+            padding: 6px 8px 0px 8px;
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 16px;    /* default from body */
+        }
+        .control-group > label:first-child {
+            font-weight: bold;
+            color: #cccccc;   /* subtle pop */
+        }
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .radio-group label {
+            margin: 0;
+            font-size: 14px;
+            color: #bbbbbb;   /* slightly darker than headers */
+        }
+        input[type="radio"], input[type="checkbox"] {
+            accent-color: #4da8ff;
+            margin-right: 8px;
+        }
+        #clear-btn {
+            padding: 10px 20px;
+            margin: 10px 5px 0 0;
+            background-color: #444;
+            color: #e0e0e0;
+            border: 1px solid #666;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #clear-btn:hover {
+            background-color: #555;
+        }
+        #date-info {
+            margin-top: 10px;
+            color: #aaaaaa;
+            font-size: 14px;
+            text-align: center;
+        }
+        .more-flights-btn {
+            background-color: #4da8ff;
+            color: #ffffff;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            display: inline-block;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .more-flights-btn:hover {
+            background-color: #357abd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Flight Assistant Chat Demo</h1>
+    <p class="subtitle">Ask about flight status or book a flight in a conversational style.</p>
+
+    <div id="chat-container"></div>
+
+    <input type="text" id="input-box" placeholder="Enter your flight query...">
+
+    <details>
+        <summary>Options ▼</summary>
+        <div class="controls">
+            <div class="control-group">
+                <label>Sort by:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="sort" value="Price" checked> Price</label>
+                    <label><input type="radio" name="sort" value="Price (Nonstops first)"> Price (Nonstops first)</label>
+                    <label><input type="radio" name="sort" value="Time"> Time</label>
+                    <label><input type="radio" name="sort" value="Time (Nonstops first)"> Time (Nonstops first)</label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Numeric Date Format:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="date_format" value="MM/DD: 6/23 (U.S.A.)" checked> MM/DD: 6/23 (U.S.A.)</label>
+                    <label><input type="radio" name="date_format" value="DD/MM: 23/6 (International)"> DD/MM: 23/6 (International)</label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label><input type="checkbox" id="nearby-airports"> Include Nearby Airports</label>
+            </div>
+        </div>
+    </details>
+
+    <button id="clear-btn">Clear Chat</button>
+    <p id="date-info">
+        Your current date: <span id="date-display">detecting...</span>
+    </p>
+
+    <script>
+        let dateTimezone = {};
+        let chatHistory = [];
+        let stateDict = {};
+
+        window.addEventListener('load', () => {
+            const date = new Date().toLocaleString();
+            const timezone = Intl.DateTimeFormat().resolvedOptions.timeZone || 'Etc/UTC';
+            dateTimezone = { date, timezone };
+
+            document.getElementById('date-display').innerText = 
+                `${date} (${timezone})`;
+        });
+
+        document.getElementById('input-box').addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                await submitChat();
+            }
+        });
+
+        async function submitChat() {
+            const input = document.getElementById('input-box').value.trim();
+            if (!input) return;
+
+            const sortRadio = document.querySelector('input[name="sort"]:checked').value;
+            const dateFormat = document.querySelector('input[name="date_format"]:checked').value;
+            const nearbyAirports = document.getElementById('nearby-airports').checked;
+
+            // Add user message
+            const chatContainer = document.getElementById('chat-container');
+            const userMsg = document.createElement('p');
+            userMsg.className = 'user';
+            userMsg.innerText = `User: ${input}`;
+            chatContainer.appendChild(userMsg);
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        input,
+                        date_timezone: dateTimezone,
+                        sort_radio: sortRadio,
+                        date_format: dateFormat,
+                        nearby_airports: nearbyAirports,
+                        chat_history: chatHistory,
+                        state_dict: stateDict
+                    })
+                });
+
+                const data = await response.json();
+
+                // Add bot response
+                const botMsg = document.createElement('p');
+                botMsg.className = 'bot';
+                let responseText = data.response;
+                if (responseText.includes('View More Flight Options')) {
+                    responseText = responseText.replace(
+                        'View More Flight Options',
+                        '<button class="more-flights-btn">View More Flight Options</button>'
+                    );
+                }
+                botMsg.innerHTML = `Bot: ${responseText}`;
+                chatContainer.appendChild(botMsg);
+
+                // Re-attach button handler
+                const moreFlightsBtn = botMsg.querySelector('.more-flights-btn');
+                if (moreFlightsBtn) {
+                    moreFlightsBtn.addEventListener('click', showMoreFlights);
+                }
+
+                // Update state
+                chatHistory = data.chat_history;
+                stateDict = data.state_dict;
+
+                // Update debug info from server (in case user_date changed)
+                document.getElementById('date-display').innerText = 
+                    `Date: ${dateTimezone.date} (${dateTimezone.timezone})`;
+
+                document.getElementById('input-box').value = '';
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                const errorMsg = document.createElement('p');
+                errorMsg.className = 'bot';
+                errorMsg.innerText = `Bot: Error - ${error.message}`;
+                chatContainer.appendChild(errorMsg);
+            }
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function showMoreFlights() {
+            const sortRadio = document.querySelector('input[name="sort"]:checked').value;
+
+            try {
+                const response = await fetch('/show_more', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_history: chatHistory,
+                        state_dict: stateDict,
+                        sort_radio: sortRadio
+                    })
+                });
+
+                const data = await response.json();
+
+                const botMsg = document.createElement('p');
+                botMsg.className = 'bot';
+                let responseText = data.response;
+                if (responseText.includes('View More Flight Options')) {
+                    responseText = responseText.replace(
+                        'View More Flight Options',
+                        '<button class="more-flights-btn">View More Flight Options</button>'
+                    );
+                }
+                botMsg.innerHTML = `Bot: ${responseText}`;
+                document.getElementById('chat-container').appendChild(botMsg);
+
+                const moreFlightsBtn = botMsg.querySelector('.more-flights-btn');
+                if (moreFlightsBtn) {
+                    moreFlightsBtn.addEventListener('click', showMoreFlights);
+                }
+
+                chatHistory = data.chat_history;
+                stateDict = data.state_dict;
+
+                document.getElementById('chat-container').scrollTop = 
+                    document.getElementById('chat-container').scrollHeight;
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                const errorMsg = document.createElement('p');
+                errorMsg.className = 'bot';
+                errorMsg.innerText = `Bot: Error - ${error.message}`;
+                document.getElementById('chat-container').appendChild(errorMsg);
+            }
+        }
+
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            chatHistory = [];
+            stateDict = {};
+            document.getElementById('chat-container').innerHTML = '';
+            document.getElementById('input-box').value = '';
+            document.getElementById('date-display').innerText = 
+                `Date: ${dateTimezone.date} (${dateTimezone.timezone})`;
+        });
+    </script>
+</body>
+</html>
