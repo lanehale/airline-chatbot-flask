@@ -44,7 +44,7 @@ model_path = "lanehale1/airline_chatbot_model"  # Use HF Models repo
 model = AutoModelForSequenceClassification.from_pretrained(
     model_path,
     id2label=id2label_mapping,
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     low_cpu_mem_usage=True,
 )
 tokenizer = AutoTokenizer.from_pretrained(model_path)
